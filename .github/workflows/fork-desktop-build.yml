@@ -16,7 +16,8 @@ name: Build Desktop · Fork · unsigned macOS
 
 on:
   push:
-    branches: ['**']
+    branches-ignore:
+      - 'ci-diagnostics-*'
     tags: ['dsh-v*']
   workflow_dispatch:
     inputs:
@@ -155,6 +156,60 @@ jobs:
             done
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish build diagnostics
+        # The job log stays inside GitHub, which a fork owner without API access
+        # cannot read. The failure report is published to a branch instead.
+        if: failure()
+        env:
+          BRANCH: ci-diagnostics-${{ matrix.target }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo "# Build diagnostics · ${{ matrix.target }}"
+            echo
+            echo "- run: ${{ github.run_id }}"
+            echo "- attempt: ${{ github.run_attempt }}"
+            echo "- runner: ${{ matrix.runner }}"
+            echo "- commit: ${{ github.sha }}"
+            echo
+            echo '## Disk before the build'
+            echo '```'
+            cat disk-before.txt 2>/dev/null || echo 'no record'
+            echo '```'
+            echo
+            echo '## Disk after the build'
+            echo '```'
+            df -h .
+            echo '```'
+            echo
+            echo '## Build log tail'
+            echo '```'
+            tail -300 build.log 2>/dev/null || echo 'no build log'
+            echo '```'
+            echo
+            echo '## Packaging journal'
+            echo '```'
+            for journal in apps/desktop/.desktop-build/packaging-runs/*/events.jsonl; do
+              [ -f "$journal" ] || continue
+              echo "### $journal"
+              tail -80 "$journal"
+            done
+            echo '```'
+          } > "diagnostics-${{ matrix.target }}.md"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          blob="$(git hash-object -w "diagnostics-${{ matrix.target }}.md")"
+          tree="$(printf '100644 blob %s\tdiagnostics-%s.md\n' "$blob" "${{ matrix.target }}" | git mktree)"
+          commit="$(git commit-tree "$tree" -m "ci: build diagnostics for ${{ matrix.target }} run ${{ github.run_id }}")"
+          remote="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git fetch "$remote" "$BRANCH" 2>/dev/null; then
+            lease="$(git rev-parse FETCH_HEAD)"
+            git push --force-with-lease="$BRANCH:$lease" "$remote" "$commit:refs/heads/$BRANCH"
+          else
+            git push "$remote" "$commit:refs/heads/$BRANCH"
+          fi
 
       - name: Locate package
         id: package
