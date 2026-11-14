@@ -28,7 +28,14 @@ A conflict stops the script with the merge left in place; resolve it, commit, an
 
 ## Publishing
 
-Every push to `fork/master` builds the unsigned application for macOS x64 and arm64 on GitHub-hosted runners and keeps each DMG as a workflow artifact. A `v*` tag publishes the DMGs as a GitHub release.
+Every push to `fork/master` builds the unsigned application for macOS x64 and arm64 on GitHub-hosted runners and keeps each DMG as a workflow artifact.
+
+A release uses the upstream tag convention: the tag is `dsh-v` followed by the version the repository carries, so `dsh-v0.2.2-rc.3` for version `0.2.2-rc.3`. The build rejects a tag that does not name the repository version, and the DMGs are published as a GitHub release under that tag.
+
+```sh
+git tag "dsh-v$(node -p "require('./package.json').version")"
+git push fork "dsh-v$(node -p "require('./package.json').version")"
+```
 
 The package carries an ad-hoc signature, so remove the quarantine attribute before installing it:
 
