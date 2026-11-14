@@ -35,26 +35,34 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          x64='{"target":"mac-x64","arch":"x64","runner":"macos-15-intel","package_script":"package:desktop:mac:x64:unsigned"}'
+          arm64='{"target":"mac-arm64","arch":"arm64","runner":"macos-15","package_script":"package:desktop:mac:arm64:unsigned"}'
+          case "$TARGET" in
+            mac-x64) matrix="[$x64]" ;;
+            mac-arm64) matrix="[$arm64]" ;;
+            *) matrix="[$x64,$arm64]" ;;
+          esac
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   build:
     name: ${{ matrix.target }}
-    if: >-
-      github.event_name != 'workflow_dispatch'
-      || inputs.target == 'both'
-      || inputs.target == matrix.target
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Each target builds on a host of the same architecture, because the
-          # primary runtime checks execute the packaged interpreters.
-          - target: mac-x64
-            arch: x64
-            runner: macos-15-intel
-            package_script: package:desktop:mac:x64:unsigned
-          - target: mac-arm64
-            arch: arm64
-            runner: macos-15
-            package_script: package:desktop:mac:arm64:unsigned
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 150
     defaults:
@@ -64,8 +72,6 @@ jobs:
       DSH_TELEMETRY_DISABLED: '1'
       DSH_DESKTOP_TARGET_PLATFORM: darwin
       DSH_DESKTOP_TARGET_ARCH: ${{ matrix.arch }}
-      DSH_DESKTOP_PACKAGE_CACHE_DIR: ${{ runner.tool_cache }}/dsh-desktop-package-cache
-      PNPM_CONFIG_STORE_DIR: ${{ runner.tool_cache }}/pnpm-store
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -79,6 +85,11 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '24'
+
+      - name: Configure package caches
+        run: |
+          echo "DSH_DESKTOP_PACKAGE_CACHE_DIR=${{ runner.tool_cache }}/dsh-desktop-package-cache" >> "$GITHUB_ENV"
+          echo "PNPM_CONFIG_STORE_DIR=${{ runner.tool_cache }}/pnpm-store" >> "$GITHUB_ENV"
 
       - name: Restore package caches
         uses: actions/cache@v6.1.0
@@ -101,7 +112,15 @@ jobs:
         run: |
           set -euo pipefail
           directory="apps/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts"
-          dmg="$(ls -1 "$directory"/*.dmg | head -1)"
+          dmg=""
+          for candidate in "$directory"/*.dmg; do
+            dmg="$candidate"
+            break
+          done
+          if [ -z "$dmg" ]; then
+            echo "no DMG in $directory" >&2
+            exit 1
+          fi
           echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
           ls -lh "$directory"
 
@@ -130,4 +149,9 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          gh release create "$TAG" artifacts/*/*.dmg --title "$TAG" --generate-notes
+          mapfile -t packages < <(find artifacts -name '*.dmg')
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "no DMG artifact was retained" >&2
+            exit 1
+          fi
+          gh release create "$TAG" "${packages[@]}" --title "$TAG" --generate-notes
