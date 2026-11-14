@@ -8,9 +8,9 @@
 # from the same tarballs the main-repository release workflow publishes.
 name: Sandbox
 
+# Fork: the automatic triggers are removed; this fork only publishes the app.
 on:
-  push:
-    branches: [master]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

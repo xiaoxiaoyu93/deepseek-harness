@@ -8,10 +8,9 @@
 # its own tag.
 name: Release (vendor)
 
+# Fork: the automatic triggers are removed; this fork only publishes the app.
 on:
   pull_request:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:

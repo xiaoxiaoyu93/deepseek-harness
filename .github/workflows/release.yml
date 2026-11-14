@@ -7,10 +7,9 @@
 # release-publish.yml from a dsh-v* tag.
 name: Release (dsh)
 
+# Fork: the automatic triggers are removed; this fork only publishes the app.
 on:
   pull_request:
-  push:
-    branches: [master]
   workflow_dispatch:
 
 permissions:
