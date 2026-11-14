@@ -17,8 +17,8 @@ for argument in "$@"; do
   esac
 done
 
-if [ -n "$(git status --porcelain)" ]; then
-  echo "fork-sync: the working tree has uncommitted changes" >&2
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  echo "fork-sync: tracked files have uncommitted changes" >&2
   exit 1
 fi
 
