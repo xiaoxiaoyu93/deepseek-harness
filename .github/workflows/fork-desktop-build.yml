@@ -88,6 +88,9 @@ jobs:
       DSH_TELEMETRY_DISABLED: '1'
       DSH_DESKTOP_TARGET_PLATFORM: darwin
       DSH_DESKTOP_TARGET_ARCH: ${{ matrix.arch }}
+      # The packaging smoke converts Office documents; a shared runner needs
+      # more than the default minute for the engine's cold start.
+      DSH_OFFICE_KIT_TIMEOUT_MS: '600000'
     steps:
       - uses: actions/checkout@v7.0.1
         with:

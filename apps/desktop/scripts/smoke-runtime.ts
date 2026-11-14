@@ -15,6 +15,12 @@ import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
 
 /**
+ * Deadline for one smoke request. A conversion includes the LibreOffice engine's cold start, which a slow
+ * packaging host needs more than a minute for, so the request budget exceeds the office-kit conversion budget.
+ */
+const SMOKE_REQUEST_TIMEOUT_MS = 900_000
+
+/**
  * Require each bundled Office skill to be listed and loaded with a nonempty body.
  * @param results - Host probe results; `bytes` is the loaded body length, 0 when unlisted or not loaded.
  * @throws Error listing every result when a bundled Office skill is missing or empty.
@@ -193,21 +199,21 @@ export function apply(ctx) {
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
     if (await pluginResponse.text() !== 'plugin route ready') throw new Error('desktop runtime: plugin HTTP route failed')
     const installation = await fetch(new URL('/desktop-smoke-install', ready.url), {
-      headers: { cookie }, signal: AbortSignal.timeout(120_000),
+      headers: { cookie }, signal: AbortSignal.timeout(SMOKE_REQUEST_TIMEOUT_MS),
     })
     const installationResult = await installation.text()
     const installed = await fetch(new URL('/desktop-smoke-installed', ready.url), { headers: { cookie } })
     if (!installation.ok || !installed.ok || await installed.text() !== 'installed plugin ready') {
       throw new Error(`desktop runtime: bundled pnpm plugin installation failed: ${installationResult}`)
     }
-    const skills = await fetch(new URL('/desktop-smoke-skills', ready.url), { headers: { cookie }, signal: AbortSignal.timeout(120_000) })
+    const skills = await fetch(new URL('/desktop-smoke-skills', ready.url), { headers: { cookie }, signal: AbortSignal.timeout(SMOKE_REQUEST_TIMEOUT_MS) })
     if (!skills.ok) throw new Error(`desktop runtime: Office skill loading failed: ${await skills.text()}`)
     const loadedSkills = await skills.json() as { name: string; bytes: number }[]
     assertOfficeSkillsLoadable(loadedSkills)
     console.log('desktop runtime: packaged Office skills listed and loaded')
     for (const { extension } of inputs) {
       const converted = await fetch(new URL(`/desktop-smoke-office/${extension}`, ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(120_000),
+        headers: { cookie }, signal: AbortSignal.timeout(SMOKE_REQUEST_TIMEOUT_MS),
       })
       if (!converted.ok) throw new Error(`desktop runtime: ${extension} conversion failed: ${await converted.text()}`)
       const pdf = Buffer.from(await converted.arrayBuffer())
@@ -218,7 +224,7 @@ export function apply(ctx) {
     }
     for (const { extension } of inputs) {
       const operations = await fetch(new URL(`/desktop-smoke-office-operations/${extension}`, ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(240_000),
+        headers: { cookie }, signal: AbortSignal.timeout(SMOKE_REQUEST_TIMEOUT_MS),
       })
       if (!operations.ok) throw new Error(`desktop runtime: ${extension} Office operations failed: ${await operations.text()}`)
       const result = await operations.json() as { images: string[]; converted: string; recalculated: string | null }

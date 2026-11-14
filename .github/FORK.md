@@ -48,3 +48,12 @@ xattr -dr com.apple.quarantine "/Applications/DeepSeek Harness.app"
 The upstream pull-request, master-push, and nightly workflows keep their files but lose their automatic triggers, so a push to this fork runs only the application build. The affected files are `ci-master.yml`, `e2e.yml`, `node-addon-system.yml`, `release-vendor.yml`, `release.yml`, and `sandbox.yml`; each one still runs on demand from the Actions tab.
 
 Deleting those files instead would make every upstream change to them a delete/modify conflict, so the fork keeps them and changes only their trigger blocks.
+
+## Source changes in this fork
+
+Two upstream files carry a change that the packaging host needs, and the build sets the environment that activates it:
+
+- `packages/bundle/web-app/cordis.patch.yml` gives the office-kit provider a conversion deadline read from `DSH_OFFICE_KIT_TIMEOUT_MS`, which keeps the upstream default of one minute when the variable is absent.
+- `apps/desktop/scripts/smoke-runtime.ts` gives every smoke request a budget that exceeds that deadline, because a conversion includes the LibreOffice engine's cold start.
+
+The build sets `DSH_OFFICE_KIT_TIMEOUT_MS=600000` for both architectures. Without it, the macOS x64 package fails its final smoke test on a shared runner: the conversion exceeds the one-minute deadline, and the packaging script treats that failure as a failed build even though the installer was already written.
