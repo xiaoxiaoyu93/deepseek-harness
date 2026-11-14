@@ -105,6 +105,7 @@ jobs:
         run: |
           echo "DSH_DESKTOP_PACKAGE_CACHE_DIR=${{ runner.tool_cache }}/dsh-desktop-package-cache" >> "$GITHUB_ENV"
           echo "PNPM_CONFIG_STORE_DIR=${{ runner.tool_cache }}/pnpm-store" >> "$GITHUB_ENV"
+          df -h . > disk-before.txt
 
       - name: Restore package caches
         uses: actions/cache@v6.1.0
@@ -120,7 +121,40 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build unsigned Desktop package
-        run: pnpm run ${{ matrix.package_script }}
+        run: |
+          set -o pipefail
+          pnpm run ${{ matrix.package_script }} 2>&1 | tee build.log
+
+      - name: Report build diagnostics
+        if: always()
+        run: |
+          {
+            echo "## Build diagnostics · ${{ matrix.target }}"
+            echo
+            echo '### Disk before the build'
+            echo '```'
+            cat disk-before.txt 2>/dev/null || echo 'no record'
+            echo '```'
+            echo
+            echo '### Disk after the build'
+            echo '```'
+            df -h .
+            echo '```'
+            echo
+            echo '### Build log tail'
+            echo '```'
+            tail -120 build.log 2>/dev/null || echo 'no log'
+            echo '```'
+            echo
+            echo '### Packaging journal'
+            echo '```'
+            for journal in apps/desktop/.desktop-build/packaging-runs/*/events.jsonl; do
+              [ -f "$journal" ] || continue
+              echo "#### $journal"
+              tail -40 "$journal"
+            done
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Locate package
         id: package
