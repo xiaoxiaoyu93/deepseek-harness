@@ -261,4 +261,9 @@ jobs:
             echo "no DMG artifact was retained" >&2
             exit 1
           fi
-          gh release create "$TAG" "${packages[@]}" --title "$TAG" --generate-notes
+          # The job runs no checkout, so the release names its repository.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${packages[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" "${packages[@]}" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
+          fi
